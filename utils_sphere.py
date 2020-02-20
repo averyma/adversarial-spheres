@@ -7,26 +7,9 @@ import os
 from tqdm import trange
 from torch.autograd import grad
 from scipy.stats import norm
-import matplotlib.pyplot as plt
-import warnings
-warnings.filterwarnings("ignore")
 
-avoid_zero_div = 1e-12
-force_positive_weight = -1e-6
-
-def seed_everything(manual_seed):
-    # set benchmark to False for EXACT reproducibility
-    # when benchmark is true, cudnn will run some tests at
-    # the beginning which determine which cudnn kernels are
-    # optimal for opertions
-    random.seed(manual_seed)
-    torch.manual_seed(manual_seed)
-    torch.cuda.manual_seed(manual_seed)
-    np.random.seed(manual_seed)
-    os.environ['PYTHONHASHSEED'] = str(manual_seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = True
-
+AVOID_ZERO_DIV = 1e-12
+FORCE_POSITIVE_WEIGHT = -1e-6
 
 def make_perfect_model(model, r, device):    
     W, w ,b = return_model_params(model)
@@ -46,7 +29,7 @@ def make_perfect_model(model, r, device):
     return model.to(device)
 
 def make_positive_wb(model):
-#     list(model.parameters())[1].data.clamp_(max = force_positive_weight)
+#     list(model.parameters())[1].data.clamp_(max = FORCE_POSITIVE_WEIGHT)
     w = list(model.parameters())[1].detach()
     b = list(model.parameters())[2].detach()
 
@@ -59,7 +42,7 @@ def make_positive_wb(model):
 def make_sphere(num_samples, dim, r, device):
     z = torch.randn([int(num_samples), dim])
     z_norm = torch.norm(z.detach(), p = 2, dim = 1, keepdim = True)
-    x = (z / z_norm.clamp(min = avoid_zero_div)).to(device)
+    x = (z / z_norm.clamp(min = AVOID_ZERO_DIV)).to(device)
     mask = torch.rand(int(num_samples)) > 0.5
     x[mask,:] = r * x[mask,:]
     y = (r * mask.int()).float().to(device)
@@ -129,61 +112,3 @@ def analytic_err(model, r):
     err = err_inner
     return err
 
-def plot_err_stats(log, log_scale):
-    train_acc = log["train_acc"]
-    train_loss = log["train_loss"]
-    err_1 = log["err_1"]
-    err_2 = log["err_2"]
-    iteration = log["iteration"]
-    len_err = len(err_1)
-    err_freq = int(iteration/len_err)
-    iteration_list = list(range(err_freq, (len_err+1) * err_freq, err_freq))
-
-    fig = plt.figure(figsize = [30,7])
-    fig.patch.set_facecolor('white')
-    gs = fig.add_gridspec(1,4)
-    fig.add_subplot(gs[0,0]).plot(iteration_list, err_1, "C1", linewidth=3.0, marker = "o")
-    fig.add_subplot(gs[0,1]).plot(iteration_list, err_2, "C2", linewidth=3.0, marker = "o")
-    fig.add_subplot(gs[0,2]).plot(iteration_list, train_acc, "C3", linewidth=3.0, marker = "o")
-    fig.add_subplot(gs[0,3]).plot(iteration_list, train_loss, "C4",label = "loss", linewidth=3.0, marker = "o")
-
-    fig.add_subplot(gs[0,0]).set_title("Analytical error rate", fontsize = 25)
-    fig.add_subplot(gs[0,1]).set_title("Percentage of good alphas" , fontsize = 25)
-    fig.add_subplot(gs[0,2]).set_title("Train accuracy", fontsize = 25)
-    fig.add_subplot(gs[0,3]).set_title("Train loss" , fontsize = 25)
-    fig.add_subplot(gs[0,0]).set_xlabel("iterations", fontsize = 25)
-    fig.add_subplot(gs[0,1]).set_xlabel("iterations", fontsize = 25)
-    fig.add_subplot(gs[0,2]).set_xlabel("iterations", fontsize = 25)
-    fig.add_subplot(gs[0,3]).set_xlabel("iterations", fontsize = 25)
-    
-    if log_scale == True:
-        fig.add_subplot(gs[0,0]).ticklabel_format(style='sci', axis='x', scilimits=(5,5))
-        fig.add_subplot(gs[0,1]).ticklabel_format(style='sci', axis='x', scilimits=(5,5))
-        fig.add_subplot(gs[0,2]).ticklabel_format(style='sci', axis='x', scilimits=(5,5))
-        fig.add_subplot(gs[0,3]).ticklabel_format(style='sci', axis='x', scilimits=(5,5))
-        fig.add_subplot(gs[0,0]).set_xscale("log")
-        fig.add_subplot(gs[0,1]).set_xscale("log")
-        fig.add_subplot(gs[0,2]).set_xscale("log")
-        fig.add_subplot(gs[0,3]).set_xscale("log")
-
-    fig.add_subplot(gs[0,0]).grid()
-    fig.add_subplot(gs[0,1]).grid()
-    fig.add_subplot(gs[0,2]).grid()
-    fig.add_subplot(gs[0,3]).grid()
-    fig.add_subplot(gs[0,0]).tick_params(labelsize=20)
-    fig.add_subplot(gs[0,1]).tick_params(labelsize=20)
-    fig.add_subplot(gs[0,2]).tick_params(labelsize=20)
-    fig.add_subplot(gs[0,3]).tick_params(labelsize=20)
-
-    fig.tight_layout()
-    
-    return fig
-
-def save_stats(model, r, loss_clean, batch_acc, batch_size, i, log):
-    log["err_1"].append(analytic_err(model, r))
-    log["err_2"].append(percentage_good_alpha(model, r))
-    log["train_acc"].append(batch_acc)
-    log["train_loss"].append(loss_clean.item() * batch_size)
-    log["iteration"] = i
-
-    return log

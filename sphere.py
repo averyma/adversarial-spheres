@@ -5,7 +5,8 @@ import ipdb
 import os
 from tqdm import trange
 from torch.autograd import grad
-from utils import *
+from utils_sphere import *
+from utils_general import *
 
 avoid_zero_div = 1e-12
 force_positive_weight = -1e-6
@@ -138,7 +139,7 @@ def train_true_max(dim, r, total_iterations, err_freq, model, opt, device):
                 log = save_stats(model, r, loss_clean, batch_acc, batch_size, i+1, log)
     return log
 
-def test_clean_sphere(dim, r, total_samples, batch_size, model, device):
+def test_clean(dim, r, total_samples, batch_size, model, device):
     model = model.eval()
     total_loss, total_correct = 0.,0.
     
@@ -150,7 +151,7 @@ def test_clean_sphere(dim, r, total_samples, batch_size, model, device):
             yp = model(x)
             loss = nn.BCEWithLogitsLoss()(yp,y.float())
 
-            total_correct += ((yp.squeeze()>0).float() == y.squeeze().float()).sum().item()
+            total_correct += ((yp>0).bool() == y.bool()).sum().item()
             total_loss += loss.item() * batch_size
             t.update()
     
@@ -159,17 +160,29 @@ def test_clean_sphere(dim, r, total_samples, batch_size, model, device):
     
     return test_acc, test_loss
                 
-def test_adv_sphere(loader, model, attack, param, device):
+def test_adv(pgd_itr, dim, r, total_samples, batch_size, model, device):
     model = model.eval()
     total_loss, total_correct = 0.,0.
-    with trange(len(loader)) as t:
-        for X,y in loader:
-            X,y = X.to(device), y.float().to(device)
-            delta = attack(**param).generate(model,X,y.float())
-            yp = model(X+delta)
-            loss = nn.BCEWithLogitsLoss()(yp,y)
 
-            total_correct += ((yp.squeeze()>0).float() == y.squeeze().float()).sum().item()
-            total_loss += loss.item() * X.shape[0]
+    attack_param = {'alpha': 0.01, 'num_iter': pgd_itr, 'loss_fn': nn.BCEWithLogitsLoss()}
+    num_itr = int(total_samples/batch_size)
+    with trange(num_itr) as t:
+        for i in range(num_itr):
+            
+            x, y = make_sphere(batch_size, dim, r, device)
+            delta = pgd_sphere(**attack_param).generate(model,x,y)
+            
+            yp = model(x+delta)
+            loss = nn.BCEWithLogitsLoss()(yp, y)
+
+            batch_correct = ((yp>0).bool() == y.bool()).sum().item()
+            batch_acc = batch_correct / batch_size * 100
+            total_loss += loss.item() * batch_size
+            
+            t.set_postfix(loss = loss.item(),
+                          acc = "{0:.2f}%".format(batch_acc))
             t.update()
-    return total_correct / len(loader.dataset), total_loss / len(loader.dataset)
+            
+    test_acc = total_correct / total_samples
+    test_loss = total_loss / total_samples
+    return test_acc, test_loss
