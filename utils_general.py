@@ -24,27 +24,29 @@ def seed_everything(manual_seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
 
-def plot_err_stats(log, log_scale):
-    train_acc = log["train_acc"]
-    train_loss = log["train_loss"]
-    err_1 = log["err_1"]
-    err_2 = log["err_2"]
-    iteration = log["iteration"]
-    len_err = len(err_1)
+def plot_stats(stats, log_scale):
+    train_acc = stats["train_acc"]
+    train_loss = stats["train_loss"]
+    ana_err = stats["ana_err"]
+    alpha = stats["alpha"]
+    iteration = stats["iteration"]
+    len_err = len(ana_err)
     err_freq = int(iteration/len_err)
     iteration_list = list(range(err_freq, (len_err+1) * err_freq, err_freq))
 
     fig = plt.figure(figsize = [30,7])
     fig.patch.set_facecolor('white')
     gs = fig.add_gridspec(1,4)
-    fig.add_subplot(gs[0,0]).plot(iteration_list, err_1, "C1", linewidth=3.0, marker = "o")
-    fig.add_subplot(gs[0,1]).plot(iteration_list, err_2, "C2", linewidth=3.0, marker = "o")
-    fig.add_subplot(gs[0,2]).plot(iteration_list, train_acc, "C3", linewidth=3.0, marker = "o")
-    fig.add_subplot(gs[0,3]).plot(iteration_list, train_loss, "C4",label = "loss", linewidth=3.0, marker = "o")
+    fig.add_subplot(gs[0,0]).plot(iteration_list, ana_err, "C1", linewidth=3.0, marker = "o")
+    fig.add_subplot(gs[0,1]).plot(iteration_list, alpha[:,0], "C2", label = r"$\alpha_i \in [1/r^2, 1]$", linewidth=3.0, marker = "o")
+    fig.add_subplot(gs[0,1]).plot(iteration_list, alpha[:,1], "C3", label = r"$\alpha_i > 1$", linewidth=3.0, marker = "o")
+    fig.add_subplot(gs[0,1]).plot(iteration_list, alpha[:,2], "C4", label = r"$\alpha_i < 1/r^2$", linewidth=3.0, marker = "o")
+    fig.add_subplot(gs[0,2]).plot(iteration_list, train_acc, "C5", linewidth=3.0, marker = "o")
+    fig.add_subplot(gs[0,3]).plot(iteration_list, train_loss, "C6",label = "loss", linewidth=3.0, marker = "o")
 
-    fig.add_subplot(gs[0,0]).set_title("Analytical error rate", fontsize = 25)
-    fig.add_subplot(gs[0,1]).set_title("Percentage of good alphas" , fontsize = 25)
-    fig.add_subplot(gs[0,2]).set_title("Train accuracy", fontsize = 25)
+    fig.add_subplot(gs[0,0]).set_title("Analytical error rate (inner sphere)", fontsize = 25)
+    fig.add_subplot(gs[0,1]).set_title(r"Percentage of $\alpha_i$ in different ranges" , fontsize = 25)
+    fig.add_subplot(gs[0,2]).set_title("Train accuracy (b4 grad update)", fontsize = 25)
     fig.add_subplot(gs[0,3]).set_title("Train loss" , fontsize = 25)
     fig.add_subplot(gs[0,0]).set_xlabel("iterations", fontsize = 25)
     fig.add_subplot(gs[0,1]).set_xlabel("iterations", fontsize = 25)
@@ -62,23 +64,25 @@ def plot_err_stats(log, log_scale):
         fig.add_subplot(gs[0,3]).set_xscale("log")
 
     fig.add_subplot(gs[0,0]).grid()
-    fig.add_subplot(gs[0,1]).grid()
+    fig.add_subplot(gs[0,1]).grid(which="both")
     fig.add_subplot(gs[0,2]).grid()
     fig.add_subplot(gs[0,3]).grid()
     fig.add_subplot(gs[0,0]).tick_params(labelsize=20)
     fig.add_subplot(gs[0,1]).tick_params(labelsize=20)
     fig.add_subplot(gs[0,2]).tick_params(labelsize=20)
     fig.add_subplot(gs[0,3]).tick_params(labelsize=20)
+    
+    fig.add_subplot(gs[0,1]).legend(prop={"size": 20})
 
     fig.tight_layout()
     
     return fig
 
-def save_stats(model, r, loss_clean, batch_acc, batch_size, i, log):
-    log["err_1"].append(analytic_err(model, r))
-    log["err_2"].append(percentage_good_alpha(model, r))
-    log["train_acc"].append(batch_acc)
-    log["train_loss"].append(loss_clean.item() * batch_size)
-    log["iteration"] = i
+def save_stats(batch_loss, batch_acc, ana_err, alpha, i, stats):
+    stats["ana_err"].append(ana_err)
+    stats["alpha"] = np.vstack((stats["alpha"], alpha))
+    stats["train_acc"].append(batch_acc)
+    stats["train_loss"].append(batch_loss.item())
+    stats["iteration"] = i
 
-    return log
+    return stats 

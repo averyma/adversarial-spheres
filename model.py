@@ -10,7 +10,7 @@ class quad(nn.Module):
     """
     def __init__(self):
         super(quad, self).__init__()
-        self.layer1 = nn.Linear(500, 1000, bias = False)
+        self.layer1 = nn.Linear(500, 500, bias = False)
         self.readout = nn.Linear(1, 1, bias = True)
 
     def act(self, x):

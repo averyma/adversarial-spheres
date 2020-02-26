@@ -8,16 +8,14 @@ from torch.autograd import grad
 from utils_sphere import *
 from utils_general import *
 
-avoid_zero_div = 1e-12
-force_positive_weight = -1e-6
+AVOID_ZERO_DIV = 1e-12
 
 class pgd_sphere(object):
     """ projected gradient desscent, with random initialization within the ball """
     def __init__(self, **kwargs):
         # define default attack parameters here:
-        self.param = {'alpha': 0.01,
-                      'num_iter': 2,
-                      'restarts': 1,
+        self.param = {'alpha': 0.1,
+                      'num_iter': 1,
                       'loss_fn': nn.BCEWithLogitsLoss()}
         # parse thru the dictionary and modify user-specific params
         self.parse_param(**kwargs) 
@@ -25,23 +23,19 @@ class pgd_sphere(object):
     def generate(self, model, x, y):
         alpha = self.param['alpha']
         num_iter = self.param['num_iter']
-        restarts = self.param['restarts']
         loss_fn = self.param['loss_fn']
         
-        _dim = x.shape[1]
-        r = torch.norm(x.detach(), p = 2, dim = 1, keepdim = True)
+        r = return_norm(x) 
         delta = torch.rand_like(x, requires_grad=True)
-        delta.data = r * (x.detach()+ delta.detach()) / torch.norm((x + delta).detach(), p = 2, dim = 1, keepdim = True) - x.detach()
-        # delta.data = r * (x.data + delta.data) / torch.norm((x.data + delta.data), p = 2, dim = 1, keepdim = True) - x.data
+        delta.data = r * normalize(x + delta) - x
         
         for t in range(num_iter):
             loss = loss_fn(model(x + delta), y)
             loss.backward()
             # first we need to make sure delta is within the specified lp ball
             delta_grad = delta.grad.detach()
-            delta_grad_norm = torch.norm(delta_grad.detach(), p = 2 , dim = 1, keepdim = True).clamp(min = avoid_zero_div)
-            delta.data = delta.detach() + alpha * delta_grad.detach() / delta_grad_norm.detach()
-            delta.data = r * (x.detach()+ delta.detach()) / torch.norm((x + delta).detach(), p = 2, dim = 1, keepdim = True) - x.detach()
+            delta.data = delta + alpha * normalize(delta_grad)
+            delta.data = r * normalize(x + delta) - x
             delta.grad.zero_()
 
         return delta.detach()
@@ -52,7 +46,7 @@ class pgd_sphere(object):
                 self.param[key] = value
                 
 def train_clean(dim, r, total_samples, batch_size, err_freq, model, opt, device):
-    log = {"train_acc": [], "train_loss": [], "err_1": [], "err_2": [], "iteration": 0}
+    stats = {"train_acc": [], "train_loss": [], "ana_err": [], "alpha": np.array([]).reshape(0, 3), "iteration": 0}
 
     num_itr = int(total_samples/batch_size)
     model.train()
@@ -62,25 +56,30 @@ def train_clean(dim, r, total_samples, batch_size, err_freq, model, opt, device)
             x, y = make_sphere(batch_size, dim, r, device)
             yp = model(x)
             
-            loss_clean = nn.BCEWithLogitsLoss()(yp, y)
+            loss = nn.BCEWithLogitsLoss(reduction = "mean")(yp, y)
 
             opt.zero_grad()
-            loss_clean.backward()
+            loss.backward()
             opt.step()
             
             batch_correct = ((yp>0).bool() == y.bool()).sum().item()
             batch_acc = batch_correct / batch_size * 100
 
-            t.set_postfix(loss = loss_clean.item(),
-                          acc = "{0:.2f}%".format(batch_acc))
+            t.set_postfix(loss = loss.item(),
+                          acc = "{0:.2f}%".format(batch_acc),
+                          good_alpha = "nan" if stats["alpha"].size ==0 else "{0:.2f}%".format(stats["alpha"][-1,0]))
             t.update()
             
             if (i+1) % err_freq == 0:
-                log = save_stats(model, r, loss_clean, batch_acc, batch_size, i+1, log)
-    return log
+                ana_err = analytic_err(model, r)
+                good_alpha, bad_alpha_inner, bad_alpha_outer = get_alpha_percentage(model, r)
+                stats = save_stats(loss, batch_acc, ana_err, [good_alpha, bad_alpha_inner, bad_alpha_outer], i+1, stats)
+                if np.abs( good_alpha - 100.) < 1e-5:
+                    break
+    return stats 
 
 def train_adv(pgd_itr, dim, r, total_samples, batch_size, err_freq, model, opt, device):
-    log = {"train_acc": [], "train_loss": [], "err_1": [], "err_2": [], "iteration": 0}
+    stats = {"train_acc": [], "train_loss": [], "ana_err": [], "alpha": np.array([]).reshape(0, 3), "iteration": 0}
 
     attack_param = {'alpha': 0.01, 'num_iter': pgd_itr, 'loss_fn': nn.BCEWithLogitsLoss()}
     num_itr = int(total_samples/batch_size)
@@ -91,26 +90,37 @@ def train_adv(pgd_itr, dim, r, total_samples, batch_size, err_freq, model, opt, 
             x, y = make_sphere(batch_size, dim, r, device)
             delta = pgd_sphere(**attack_param).generate(model,x,y)
             
+            yp = model(x)
+            loss = nn.BCEWithLogitsLoss()(yp, y)
+            print(loss.item())
             yp = model(x+delta)
-            loss_clean = nn.BCEWithLogitsLoss()(yp, y)
+            loss = nn.BCEWithLogitsLoss()(yp, y)
+            print(loss.item())
             
+            ipdb.set_trace() 
             opt.zero_grad()
-            loss_clean.backward()
+            loss.backward()
             opt.step()
 
             batch_correct = ((yp>0).bool() == y.bool()).sum().item()
             batch_acc = batch_correct / batch_size * 100
             
-            t.set_postfix(loss = loss_clean.item(),
-                          acc = "{0:.2f}%".format(batch_acc))
+            t.set_postfix(loss = loss.item(),
+                          acc = "{0:.2f}%".format(batch_acc),
+                          good_alpha = "nan" if stats["alpha"].size ==0 else "{0:.2f}%".format(stats["alpha"][-1,0]))
             t.update()
             
             if (i+1) % err_freq == 0:
-                log = save_stats(model, r, loss_clean, batch_acc, batch_size, i+1, log)
-    return log
+                ana_err = analytic_err(model, r)
+                good_alpha, bad_alpha_inner, bad_alpha_outer = get_alpha_percentage(model, r)
+                stats = save_stats(loss, batch_acc, ana_err, [good_alpha, bad_alpha_inner, bad_alpha_outer], i+1, stats)
+                if np.abs( good_alpha - 100.) < 1e-5:
+                    break
+    return stats 
 
 def train_true_max(dim, r, total_iterations, err_freq, model, opt, device):
-    log = {"train_acc": [], "train_loss": [], "err_1": [], "err_2": [], "iteration": 0}
+    stats = {"train_acc": [], "train_loss": [], "ana_err": [], "alpha": np.array([]).reshape(0, 3), "iteration": 0}
+    # alpha_history = np.array([]).reshape(0, 3)
     
     batch_size = 1
     num_itr = int(total_iterations)
@@ -121,23 +131,29 @@ def train_true_max(dim, r, total_iterations, err_freq, model, opt, device):
             x, y = make_true_max(model, r, device)
 
             yp = model(x)
-            loss_clean = nn.BCEWithLogitsLoss()(yp, y)
+            loss = nn.BCEWithLogitsLoss(reduction = "mean")(yp, y)
             
             opt.zero_grad()
-            loss_clean.backward()
+            loss.backward()
             opt.step()
                         
             batch_correct = ((yp>0).bool() == y.bool()).sum().item()
-            batch_acc = batch_correct / x.shape[0] * 100
+            batch_acc = batch_correct * 100
             
-            t.set_postfix(loss = loss_clean.item(),
+            t.set_postfix(loss = loss.item(),
                           acc = "{0:.2f}%".format(batch_acc),
-                          sphere = y.item())
+                          sphere = "Inner" if y.item()== 0 else "Outer",
+                          good_alpha = "nan" if stats["alpha"].size ==0 else "{0:.2f}%".format(stats["alpha"][-1,0]))
+
             t.update()
             
             if (i+1) % err_freq == 0:
-                log = save_stats(model, r, loss_clean, batch_acc, batch_size, i+1, log)
-    return log
+                ana_err = analytic_err(model, r)
+                good_alpha, bad_alpha_inner, bad_alpha_outer = get_alpha_percentage(model, r)
+                stats = save_stats(loss, batch_acc, ana_err, [good_alpha, bad_alpha_inner, bad_alpha_outer], i+1, stats)
+                if np.abs( good_alpha - 100.) < 1e-5:
+                    break
+    return stats
 
 def test_clean(dim, r, total_samples, batch_size, model, device):
     model = model.eval()
@@ -149,8 +165,8 @@ def test_clean(dim, r, total_samples, batch_size, model, device):
             x, y = make_sphere(batch_size, dim, r, device)
 
             yp = model(x)
-            loss = nn.BCEWithLogitsLoss()(yp,y.float())
-
+            loss = nn.BCEWithLogitsLoss()(yp,y)
+            # ipdb.set_trace() 
             total_correct += ((yp>0).bool() == y.bool()).sum().item()
             total_loss += loss.item() * batch_size
             t.update()
