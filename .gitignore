@@ -3,3 +3,6 @@
 obsolete/.*
 .ipynb_checkpoints/
 __pycache__/
+adv.ipynb
+clean.ipynb
+truemax.ipynb

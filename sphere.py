@@ -7,44 +7,10 @@ from tqdm import trange
 from torch.autograd import grad
 from utils_sphere import *
 from utils_general import *
+from attacks import pgd_sphere
 
 AVOID_ZERO_DIV = 1e-12
 
-class pgd_sphere(object):
-    """ projected gradient desscent, with random initialization within the ball """
-    def __init__(self, **kwargs):
-        # define default attack parameters here:
-        self.param = {'alpha': 0.1,
-                      'num_iter': 1,
-                      'loss_fn': nn.BCEWithLogitsLoss()}
-        # parse thru the dictionary and modify user-specific params
-        self.parse_param(**kwargs) 
-        
-    def generate(self, model, x, y):
-        alpha = self.param['alpha']
-        num_iter = self.param['num_iter']
-        loss_fn = self.param['loss_fn']
-        
-        r = return_norm(x) 
-        delta = torch.rand_like(x, requires_grad=True)
-        delta.data = r * normalize(x + delta) - x
-        
-        for t in range(num_iter):
-            loss = loss_fn(model(x + delta), y)
-            loss.backward()
-            # first we need to make sure delta is within the specified lp ball
-            delta_grad = delta.grad.detach()
-            delta.data = delta + alpha * normalize(delta_grad)
-            delta.data = r * normalize(x + delta) - x
-            delta.grad.zero_()
-
-        return delta.detach()
-
-    def parse_param(self, **kwargs):
-        for key,value in kwargs.items():
-            if key in self.param:
-                self.param[key] = value
-                
 def train_clean(dim, r, total_samples, batch_size, err_freq, model, opt, device):
     stats = {"train_acc": [], "train_loss": [], "ana_err": [], "alpha": np.array([]).reshape(0, 3), "iteration": 0}
 
@@ -90,14 +56,9 @@ def train_adv(pgd_itr, dim, r, total_samples, batch_size, err_freq, model, opt, 
             x, y = make_sphere(batch_size, dim, r, device)
             delta = pgd_sphere(**attack_param).generate(model,x,y)
             
-            yp = model(x)
-            loss = nn.BCEWithLogitsLoss()(yp, y)
-            print(loss.item())
             yp = model(x+delta)
             loss = nn.BCEWithLogitsLoss()(yp, y)
-            print(loss.item())
             
-            ipdb.set_trace() 
             opt.zero_grad()
             loss.backward()
             opt.step()
