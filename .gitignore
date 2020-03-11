@@ -2,7 +2,7 @@
 ._.DS_Store
 obsolete/.*
 .ipynb_checkpoints/
-.images/.*
+/images/.*
 __pycache__/
 adv.ipynb
 clean.ipynb
