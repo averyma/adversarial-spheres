@@ -28,13 +28,14 @@ def make_perfect_model(model, r, device):
     perfect_W = torch.cat([torch.eye(W_shape[1]), torch.zeros([W_shape[0] - W_shape[1], W_shape[1]])], dim = 0)
     list(model.parameters())[0].data = perfect_W
     list(model.parameters())[1].data = torch.tensor(1.).view(1,1)
-    list(model.parameters())[2].data = torch.tensor(-1.3).view(1)
+    list(model.parameters())[2].data = torch.tensor(-r).view(1)
     
-    good_alpha = get_alpha_percentage(model, r)
+    alpha_percentage = get_alpha_percentage(model, r)
+    good_alpha = alpha_percentage[0]
     if np.abs( good_alpha - 100.) > 1e-5:
-        raise Exception("Failed to make a perfect model! Good alpha: {0:.2f}%".format(get_alpha_percentage(model, r)))
+        raise Exception("Failed to make a perfect model! Good alpha: {0:.2f}%".format(good_alpha))
     else:
-        print("Good alpha: {0:.2f}%".format(get_alpha_percentage(model, r)))
+        print("Good alpha: {0:.2f}%".format(good_alpha))
 
     return model.to(device)
 
@@ -57,8 +58,8 @@ def make_sphere(num_samples, dim, r, device):
     # x = (z / z_norm.clamp(min = AVOID_ZERO_DIV)).to(device)
     mask = torch.rand(int(num_samples)) > 0.5
     x[mask,:] = r * x[mask,:]
-    y = (r * mask.int()).float().to(device)
-    
+    y = mask.float().to(device)
+    # ipdb.set_trace() 
     return x, y
 
 def make_true_max(model, r, device):
@@ -143,7 +144,10 @@ def get_alpha_percentage(model, r):
     good_alpha /= (total_alpha/100)
     bad_alpha_inner /= (total_alpha/100)
     bad_alpha_outer /= (total_alpha/100)
-    return good_alpha, bad_alpha_inner, bad_alpha_outer
+    
+    alpha_percentage = [good_alpha, bad_alpha_inner, bad_alpha_outer]
+
+    return alpha_percentage
 
 def analytic_err(model, r):
     alpha,_,_ = get_alpha(model, False)
@@ -152,13 +156,14 @@ def analytic_err(model, r):
     mu_inner = (alpha - 1).sum().item()
     sigma_inner = np.sqrt(2*((alpha - 1)**2).sum().item())
     err_inner = 1 - norm.cdf(-mu_inner/sigma_inner)
-    # ipdb.set_trace()    
+
     # error rate based on outer sphere:
-    mu_outer = (r**2 - alpha).sum().item()
-    sigma_outer = np.sqrt(2*((r**2 - alpha)**2).sum().item())
+    mu_outer = (1/r**2 - alpha).sum().item()
+    sigma_outer = np.sqrt(2*((1/r**2 - alpha)**2).sum().item())
     err_outer = 1 - norm.cdf(-mu_outer/sigma_outer)
 
-    # err = (err_inner + err_outer) * 0.5
-    err = err_inner
-    return err
+    err_avg = (err_inner + err_outer) * 0.5
+    ana_err = [err_avg, err_inner, err_outer]
+
+    return ana_err 
 

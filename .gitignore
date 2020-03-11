@@ -2,7 +2,10 @@
 ._.DS_Store
 obsolete/.*
 .ipynb_checkpoints/
+.images/.*
 __pycache__/
 adv.ipynb
 clean.ipynb
 truemax.ipynb
+slurm_out/
+result/
