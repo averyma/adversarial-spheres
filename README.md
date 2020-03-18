@@ -4,11 +4,11 @@ Pytorch implementation [Adversarial Spheres][paper-link].
 
 ## Requiresments
 ```
-pytorch 1.2.0
 python 3.6.0
+pytorch 1.2.0
+numpy 1.15.0
 tensorflow
 tqdm
-numpy 1.15.0
 ```
 
 ## How to run
@@ -18,24 +18,24 @@ numpy 1.15.0
 $ python main.py --method clean
 ```
 
-* train with worst case loss
+* train with the exact maximizer of the inner-max optimization (truemax)
 ```bash
 $ python main.py --method truemax
 ```
 
 * adversarial training with PGD attacks
 ```bash
-$ python main.py --method adv --pgd_alpha 0.1 --pgd_itr 10
+$ python main.py --method adv --pgd_alpha 0.01 --pgd_itr 50
 ```
 
 ### Standard training
 <img src = "images/clean.png">
 
-### Training with the exact maximizer of the inner-max optimization
+### Training with trueax 
 <img src = "images/truemax.png">
 
-### Adversarial training with PGD examples
-<img src = "images/adv_alpha0.1_itr10.png">
+### Adversarial training with PGD examples (eps = 0.01, itr = 100)
+<img src = "images/adv.png">
 
 ## Some minor typos in paper
 Here I notice a few typos in the original paper. They are very minor and will not affect the overal understanding of the paper, but they do matter for reproducibility.
@@ -50,6 +50,9 @@ Here I notice a few typos in the original paper. They are very minor and will no
 
 
 ## Discussions
+
+### Number of iterations required for a perfect classifier
+<img src = "images/comparison.png">
 
 ## Others
 Please cite the following paper for Adversarial spheres:

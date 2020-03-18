@@ -1,48 +1,60 @@
 import torch
 import torch.optim as optim
-# import argparse
 from args import get_args
 from model import quad
 from utils_general import *
 from sphere import *
+
+def get_optim(optimizer, lr, momentum, model):
+    if optimizer == "adam":
+        opt = optim.Adam(model.parameters(), lr = lr)
+    elif optimizer == "sgd":
+        opt = optim.SGD(model.parameters(), lr = lr, momentum = momentum)
+    else:
+        raise NotImplementedError("The specified optimizer is not considered!")
+
+    return opt
+
+def train(argu, model, opt, device):
+    
+    if argu.method == "clean":
+        stats = train_clean(argu.dim, argu.radius, 
+                            argu.total_samples, argu.batch_size, argu.err_freq,
+                            model, opt, device)
+
+    elif argu.method == "truemax":
+        stats = train_truemax(argu.dim, argu.radius,
+                              argu.total_itrs, argu.err_freq, 
+                              model, opt, device)
+
+    elif argu.method == "adv":
+        param = {"eps": argu.pgd_eps, "num_iter": argu.pgd_itr}
+        stats = train_adv(param, argu.dim, argu.radius,
+                          argu.total_samples, argu.batch_size, argu.err_freq,
+                          model, opt, device)
+    else:
+        raise NotImplementedError("Training method not implemented!")
+
+    return stats
 
 def main():
     
     args = get_args()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    save_name = args.method
-
     seed_everything(args.seed)
     model = quad().to(device)
     if args.perfect_model:
         model = make_perfect_model(model, args.radius, device)
-    opt = optim.Adam(model.parameters(), lr = args.lr)
 
-    if args.method == "clean":
-        stats = train_clean(args.dim, args.radius, 
-                            args.total_samples, args.batch_size, args.err_freq,
-                            model, opt, device)
+    opt = get_optim(args.optim, args.lr, args.momentum, model)
 
-    elif args.method == "truemax":
-        stats = train_truemax(args.dim, args.radius,
-                              args.total_itrs, args.err_freq, 
-                              model, opt, device)
-
-    elif args.method == "adv":
-        param = {"alpha": args.pgd_alpha, "num_iter": args.pgd_itr}
-        save_name += ("_alpha" + str(args.pgd_alpha) + "_itr" + str(args.pgd_itr))
-        stats = train_adv(param, args.dim, args.radius,
-                          args.total_samples, args.batch_size, args.err_freq,
-                          model, opt, device)
-
-    else:
-        raise NotImplementedError("Training method not implemented!")
+    stats = train(args, model, opt, device)
 
     fig = plot_stats(stats, True)
-    fig.savefig("./result/figure/" + save_name + ".png")
 
-    torch.save(stats, "./result/stats/" + save_name + ".pt")
+    fig.savefig("./result/" + str(args.job_id) + "/result.png")
+    torch.save(stats, "./result/" + str(args.job_id) + "/stats.pt")
 
 if __name__ == "__main__":
     main()

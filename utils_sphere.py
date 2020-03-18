@@ -62,7 +62,7 @@ def make_sphere(num_samples, dim, r, device):
     # ipdb.set_trace() 
     return x, y
 
-def make_true_max(model, r, device):
+def make_truemax(model, r, device):
     alpha,u,v = get_alpha(model, True)
    
     # d_1: diff bw 1/r**2 and those alphas below 1/r**2
@@ -79,22 +79,9 @@ def make_true_max(model, r, device):
         # d_1 is empty: all bad_alpha are larger than 1
         # OR max alpha error comes from alphas larger than 1
         # use direction corresponds to max alpha(svalue) to construct inner sphere example.
-
-        # x = v[:,0].to(device)
-        # x = (r * x.detach() / torch.norm(x.detach(), p = 2)).view(1,len(alpha))
-        # y = torch.tensor(1., device = device)
-
-        # yp = model(x)
-        # loss_clean = nn.BCEWithLogitsLoss()(yp, y)
-        # print(loss_clean.item())
-        
         x = v[:,0].view(1,len(alpha)).to(device)
         x = normalize(x)
         y = torch.tensor(0., device = device)
-
-        # yp = model(x)
-        # loss_clean = nn.BCEWithLogitsLoss()(yp, y)
-        # print(loss_clean.item())
     else: 
         # d_2 is empty: all bad_alpha are smaller than 1/r**2
         # OR max alpha error comes from alphas smaller than 1/r**2
@@ -102,24 +89,6 @@ def make_true_max(model, r, device):
         x = v[:,-1].view(1,len(alpha)).to(device)
         x = r * normalize(x)
         y = torch.tensor(1., device = device)
-
-        # yp = model(x)
-        # loss_clean = nn.BCEWithLogitsLoss()(yp, y)
-        # print(yp.item(), loss_clean.item())
-
-        # x = (r*x.detach() / torch.norm(x.detach(), p = 2)).view(1,len(alpha))
-        # y = torch.tensor(1., device = device)
-
-        # yp = model(x)
-        # loss_clean = nn.BCEWithLogitsLoss()(yp, y)
-        # print(yp.item(), loss_clean.item())
-    
-    # W,w,b = get_model_params(model)
-    # t = torch.mm(W,x.t())
-    # A = t**2
-    # tt = w*A.sum()+b
-    # p = 1/(1+torch.exp(-tt))
-    # l = -torch.log(1-p)
     return x, y
 
 def get_model_params(model):
@@ -129,12 +98,34 @@ def get_model_params(model):
     return W, w ,b
 
 def get_alpha(model, uv = False):
+    #TODO: I am getting the following errors while doing torch.svd
+    #RuntimeError: svd_cuda: the updating process of SBDSDC did not converge (error: 14)
+    #So as a temporary work-around, I copied W to cpu. But now im getting a similar error:
+    #RuntimeError: svd_cuda: the updating process of SBDSDC did not converge (error: 14)
+    #I need to look into this, possibly use the numpy svd?
     W, w ,b = get_model_params(model)
-    u,s,v = torch.svd(W, compute_uv = uv)
+
+    # if uv:
+        # u,s,v = np.linalg.svd(W.detach().cpu().numpy(), compute_uv = uv)
+        # u = torch.tensor(u, device = W.device)
+        # s = torch.tensor(s, device = W.device)
+        # v = torch.tensor(v, device = W.device)
+    # else:
+        # s = np.linalg.svd(W.detach().cpu().numpy(), compute_uv = uv)
+        # u = torch.zeros(1, device = W.device)
+        # s = torch.tensor(s, device = W.device)
+        # v = torch.zeros(1, device = W.device)
+    
+    # u,s,v = torch.svd(W, compute_uv = uv)
+    u,s,v = torch.svd(W.cpu(), compute_uv = uv)
+    u = torch.tensor(u, device = W.device)
+    s = torch.tensor(s, device = W.device)
+    v = torch.tensor(v, device = W.device)
+    
     alpha = (w * s**2 / (-b)).view(-1)
     return alpha, u, v
 
-def get_alpha_percentage(model, r):
+def get_alpha_stats(model, r):
     alpha,_,_ = get_alpha(model, False)
     total_alpha = alpha.numel()
     good_alpha = ((alpha >= 1/(r**2)) & (alpha <= 1)).sum().item()
@@ -145,9 +136,28 @@ def get_alpha_percentage(model, r):
     bad_alpha_inner /= (total_alpha/100)
     bad_alpha_outer /= (total_alpha/100)
     
-    alpha_percentage = [good_alpha, bad_alpha_inner, bad_alpha_outer]
+    worst_err, avg_err = get_alpha_err(alpha, r)
 
-    return alpha_percentage
+    alpha_stats = [good_alpha, bad_alpha_inner, bad_alpha_outer, worst_err, avg_err]
+    return alpha_stats
+
+def get_alpha_err(alpha, r):
+
+    # d_1: diff bw 1/r**2 and those alphas below 1/r**2
+    d_1 = 1/(r**2) - alpha[alpha < 1/(r**2)]
+    # d_2: diff bw 1 and those alphas above 1
+    d_2 = alpha[alpha > 1] - 1
+
+    # worst_error = torch.max(torch.max(alpha - 1).clamp(min = 0) + torch.max(1/r**2 - alpha).clamp(min = 0)
+    if len(d_1) != 0 or len(d_2) != 0:
+        worst_err = torch.cat([d_1, d_2]).max().item() 
+        avg_err = torch.cat([d_1, d_2]).mean().item()
+    else:
+        worst_err = 0
+        avg_err = 0
+
+    return worst_err, avg_err
+    
 
 def analytic_err(model, r):
     alpha,_,_ = get_alpha(model, False)

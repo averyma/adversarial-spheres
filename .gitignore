@@ -8,4 +8,4 @@ adv.ipynb
 clean.ipynb
 truemax.ipynb
 slurm_out/
-result/
+result/*
