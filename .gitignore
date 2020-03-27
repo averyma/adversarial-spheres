@@ -3,6 +3,6 @@
 obsolete/.*
 .ipynb_checkpoints/
 __pycache__/
-images/.*
+assets/.*
 slurm_out/
 result/*

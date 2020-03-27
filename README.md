@@ -35,7 +35,7 @@ $ python main.py --method adv --pgd_alpha 0.01 --pgd_itr 100
 <img src = "assets/truemax.png">
 
 ### Adversarial training with PGD examples (eps = 0.01, itr = 100)
-<img src = "assets/adv.png">
+<img src = "assets/pgd.png">
 
 ## Some minor typos in paper
 Here I notice a few typos in the original paper. They are very minor and will not affect the overal understanding of the paper, but they do matter for reproducibility.
