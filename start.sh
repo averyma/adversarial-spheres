@@ -9,4 +9,4 @@
 JOB_ID=${SLURM_JOB_ID}
 echo $JOB_ID
 
-python main.py --method $1 --pgd_alpha $2 --pgd_itr $3 --optim $4 --job_id $JOB_ID --total_itrs 100000
+python main.py --method $1 --job_id $JOB_ID --lambbda $2

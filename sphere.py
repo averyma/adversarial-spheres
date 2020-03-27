@@ -7,7 +7,7 @@ from tqdm import trange
 from torch.autograd import grad
 from utils_sphere import *
 from utils_general import *
-from attacks import pgd_sphere, pgd_sphere_normalized
+from attacks import pgd_sphere
 
 AVOID_ZERO_DIV = 1e-12
 
@@ -42,7 +42,7 @@ def train_clean(dim, r, total_samples, batch_size, err_freq, model, opt, device)
                 stats = save_stats([loss.item(), test_loss], [batch_acc, test_acc], ana_err, alpha_stats, i+1, stats)
                 if np.abs( alpha_stats[0] - 100.) < 1e-5:
                     break
-    return stats 
+    return stats
 
 def train_truemax(dim, r, total_iterations, err_freq, model, opt, device):
     stats = {"acc": mty_array(2), "loss": mty_array(2), "ana_err": mty_array(3), "alpha": mty_array(5), "iteration": 0}
@@ -86,8 +86,7 @@ def train_adv(param, dim, r, total_samples, batch_size, err_freq, model, opt, de
     stats = {"acc": mty_array(2), "loss": mty_array(2),
              "ana_err": mty_array(3), "alpha": mty_array(5), "iteration": 0}
 
-    # attack_param = {'alpha': 0.01, 'num_iter': pgd_itr, 'loss_fn': nn.BCEWithLogitsLoss()}
-    attack_param = {'alpha': param["alpha"], 'num_iter': param["num_iter"], 'loss_fn': nn.BCEWithLogitsLoss()}
+    attack_param = {'eps': param["eps"], 'num_iter': param["num_iter"], 'loss_fn': nn.BCEWithLogitsLoss()}
     num_itr = int(total_samples/batch_size)
     model.train()
     with trange(num_itr) as t:
@@ -126,6 +125,46 @@ def train_adv(param, dim, r, total_samples, batch_size, err_freq, model, opt, de
                     break
     return stats
 
+def train_reg_1st(lambbda, dim, r, total_samples, batch_size, err_freq, model, opt, device):
+    stats = {"acc": mty_array(2), "loss": mty_array(2), "ana_err": mty_array(3), "alpha": mty_array(5), "iteration": 0}
+    num_itr = int(total_samples/batch_size)
+    model.train()
+    with trange(num_itr) as t:
+        for i in range(num_itr):
+ 
+            x, y = make_sphere(batch_size, dim, r, device)
+            x.requires_grad = True
+
+            yp = model(x)
+            
+            loss = nn.BCEWithLogitsLoss(reduction = "mean")(yp, y)
+            # ipdb.set_trace()
+            dldx = len(x) * list(grad(loss, x, create_graph=True))[0]
+            reg = lambbda * torch.norm(dldx, p=2, dim=1).mean()
+
+            loss_reg = loss + reg
+
+            opt.zero_grad()
+            loss_reg.backward()
+            opt.step()
+            
+            batch_correct = ((yp>0).bool() == y.bool()).sum().item()
+            batch_acc = batch_correct / batch_size * 100
+
+            t.set_postfix(loss = loss.item(),
+                          acc = "{0:.2f}%".format(batch_acc),
+                          good_alpha = "nan" if stats["alpha"].size ==0 else "{0:.2f}%".format(stats["alpha"][-1,0]))
+            t.update()
+            
+            if (i+1) % err_freq == 0:
+                test_acc, test_loss = test_clean(dim, r, 10000, 500, model, device)
+                ana_err = analytic_err(model, r)
+                alpha_stats = get_alpha_stats(model, r)
+                stats = save_stats([loss.item(), test_loss], [batch_acc, test_acc], ana_err, alpha_stats, i+1, stats)
+                if np.abs( alpha_stats[0] - 100.) < 1e-5:
+                    break
+    return stats 
+
 def test_clean(dim, r, total_samples, batch_size, model, device):
     model = model.eval()
     total_loss, total_correct = 0.,0.
@@ -147,11 +186,11 @@ def test_clean(dim, r, total_samples, batch_size, model, device):
     
     return test_acc, test_loss
                
-def test_adv(pgd_itr, dim, r, total_samples, batch_size, model, device):
+def test_adv(param, dim, r, total_samples, batch_size, model, device):
     model = model.eval()
     total_loss, total_correct = 0.,0.
 
-    attack_param = {'alpha': 0.01, 'num_iter': pgd_itr, 'loss_fn': nn.BCEWithLogitsLoss()}
+    attack_param = {'eps': param["eps"], 'num_iter': param["num_iter"], 'loss_fn': nn.BCEWithLogitsLoss()}
     num_itr = int(total_samples/batch_size)
     with trange(num_itr) as t:
         for i in range(num_itr):

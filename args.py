@@ -1,3 +1,4 @@
+import yaml
 import argparse
 import os
 
@@ -32,6 +33,9 @@ def get_args():
     parser.add_argument("--pgd_eps", type = float, default = 0.01)
     parser.add_argument("--pgd_itr", type = int, default = 1)
     
+    # specify lambbda used for first order regularization: 
+    parser.add_argument("--lambbda", type = float, default = 0.01)
+
     args = parser.parse_args()
 
     make_dir(args)
@@ -41,12 +45,15 @@ def get_args():
 def make_dir(args):
     root_dir = "./result/"
     _dir = root_dir + str(args.job_id) + "/"
-    if not os.path.isdir(_dir):
-        os.mkdir(_dir)
-    if not os.path.exists(_dir + "log.txt"):
-        f = open(_dir + "log.txt" ,"w+")
-        f.close()
-        
-    with open(_dir + "log.txt","a") as f:
-        f.write(str(args)[10:-1].replace(", ","\n"))
 
+    try:
+        os.makedirs(_dir)
+    except os.error:
+        pass
+
+    if not os.path.exists(_dir + "/hyper_params.yaml"):
+        f = open(_dir + "/hyper_params.yaml" ,"w+")
+        f.close()
+    with open(_dir + "/hyper_params.yaml", "a") as f:
+        # f.write(str(args).replace(", ", "\n") + "\n\n")
+        f.write(yaml.dump(args))

@@ -1,5 +1,6 @@
 import torch
 import torch.optim as optim
+
 from args import get_args
 from model import quad
 from utils_general import *
@@ -18,13 +19,13 @@ def get_optim(optimizer, lr, momentum, model):
 def train(argu, model, opt, device):
     
     if argu.method == "clean":
-        stats = train_clean(argu.dim, argu.radius, 
+        stats = train_clean(argu.dim, argu.radius,
                             argu.total_samples, argu.batch_size, argu.err_freq,
                             model, opt, device)
 
     elif argu.method == "truemax":
         stats = train_truemax(argu.dim, argu.radius,
-                              argu.total_itrs, argu.err_freq, 
+                              argu.total_itrs, argu.err_freq,
                               model, opt, device)
 
     elif argu.method == "adv":
@@ -32,13 +33,19 @@ def train(argu, model, opt, device):
         stats = train_adv(param, argu.dim, argu.radius,
                           argu.total_samples, argu.batch_size, argu.err_freq,
                           model, opt, device)
+
+    elif argu.method == "reg_1st":
+        stats = train_reg_1st(argu.lambbda, argu.dim, argu.radius,
+                              argu.total_samples, argu.batch_size, argu.err_freq,
+                              model, opt, device)
+
     else:
         raise NotImplementedError("Training method not implemented!")
 
     return stats
 
 def main():
-    
+
     args = get_args()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
