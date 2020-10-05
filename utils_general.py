@@ -87,61 +87,6 @@ def plot_stats(log, log_scale):
     
     return fig
 
-def plot_stats_multi(stats, log_scale):
-    
-    
-    fig = plt.figure(figsize = [15,7])
-    fig.patch.set_facecolor('white')
-    gs = fig.add_gridspec(1,1)
-    
-    for j,i in enumerate([1,5,10,50,100]):
-        acc = stats[i]["acc"]
-        loss = stats[i]["loss"]
-        ana_err = stats[i]["ana_err"]
-        alpha = stats[i]["alpha"]
-        iteration = stats[i]["iteration"]
-        len_err = len(ana_err)
-        err_freq = int(iteration/len_err)
-        iteration_list = list(range(err_freq, (len_err+1) * err_freq, err_freq))
-        fig.add_subplot(gs[0,0]).plot(iteration_list, alpha[:,0], "C"+str(j), label = r"$\epsilon$ = 0.01, itr = "+str(i), linewidth=3.0, marker = "")
-    
-    acc = stats["clean"]["acc"]
-    loss = stats["clean"]["loss"]
-    ana_err = stats["clean"]["ana_err"]
-    alpha = stats["clean"]["alpha"]
-    iteration = stats["clean"]["iteration"]
-    len_err = len(ana_err)
-    err_freq = int(iteration/len_err)
-    iteration_list = list(range(err_freq, (len_err+1) * err_freq, err_freq))
-    fig.add_subplot(gs[0,0]).plot(iteration_list, alpha[:,0], "C9", label = "Standard", linewidth=3.0, marker = "")
-
-    acc = stats["truemax"]["acc"]
-    loss = stats["truemax"]["loss"]
-    ana_err = stats["truemax"]["ana_err"]
-    alpha = stats["truemax"]["alpha"]
-    iteration = stats["truemax"]["iteration"]
-    len_err = len(ana_err)
-    err_freq = int(iteration/len_err)
-    iteration_list = list(range(err_freq, (len_err+1) * err_freq, err_freq))
-    fig.add_subplot(gs[0,0]).plot(iteration_list, alpha[:,0], "C8", label = "Truemax", linewidth=3.0, marker = "")
-    
-    fig.add_subplot(gs[0,0]).set_title(r"Percentage of $\alpha_i \in [1/r^2, 1]$" , fontsize = 25)
-    fig.add_subplot(gs[0,0]).set_xlabel("iterations", fontsize = 25)
-    
-    if log_scale == True:
-        fig.add_subplot(gs[0,0]).ticklabel_format(style='sci', axis='x', scilimits=(5,5))
-        fig.add_subplot(gs[0,0]).set_xscale("log")
-
-
-    fig.add_subplot(gs[0,0]).grid(which="both")
-    fig.add_subplot(gs[0,0]).tick_params(labelsize=20)
-    fig.add_subplot(gs[0,0]).legend(prop={"size": 20})
-
-
-    fig.tight_layout()
-    
-    return fig
-
 class metaLogger(object):
     def __init__(self, log_path, flush_sec=5):
         self.log_path = log_path
