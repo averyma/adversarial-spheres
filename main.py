@@ -3,8 +3,9 @@ import torch.optim as optim
 
 from args import get_args
 from model import quad
-from utils_general import *
-from sphere import *
+from utils_general import seed_everything, metaLogger, plot_stats
+from utils_sphere import make_perfect_model
+from sphere import train_clean, train_truemax, train_adv, train_reg_1st
 
 def get_optim(optimizer, lr, momentum, model):
     if optimizer == "adam":
@@ -16,38 +17,39 @@ def get_optim(optimizer, lr, momentum, model):
 
     return opt
 
-def train(argu, model, opt, device):
-    
+def train(logger, argu, model, opt, device):
     if argu.method == "clean":
-        stats = train_clean(argu.dim, argu.radius,
-                            argu.total_samples, argu.batch_size, argu.err_freq,
-                            model, opt, device)
-
-    elif argu.method == "truemax":
-        stats = train_truemax(argu.dim, argu.radius,
-                              argu.total_itrs, argu.err_freq,
-                              model, opt, device)
-
-    elif argu.method == "adv":
-        param = {"eps": argu.pgd_eps, "num_iter": argu.pgd_itr}
-        stats = train_adv(param, argu.dim, argu.radius,
+        log = train_clean(logger, argu.dim, argu.radius,
                           argu.total_samples, argu.batch_size, argu.err_freq,
                           model, opt, device)
 
+    elif argu.method == "truemax":
+        log = train_truemax(logger, argu.dim, argu.radius,
+                            argu.total_itrs, argu.err_freq,
+                            model, opt, device)
+
+    elif argu.method == "adv":
+        param = {"eps": argu.pgd_eps, "num_iter": argu.pgd_itr}
+        log = train_adv(logger, param, argu.dim, argu.radius,
+                        argu.total_samples, argu.batch_size, argu.err_freq,
+                        model, opt, device)
+
     elif argu.method == "reg_1st":
-        stats = train_reg_1st(argu.lambbda, argu.dim, argu.radius,
-                              argu.total_samples, argu.batch_size, argu.err_freq,
-                              model, opt, device)
+        log = train_reg_1st(logger, argu.lambbda, argu.dim, argu.radius,
+                            argu.total_samples, argu.batch_size, argu.err_freq,
+                            model, opt, device)
 
     else:
         raise NotImplementedError("Training method not implemented!")
 
-    return stats
+    return log
 
 def main():
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     args = get_args()
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    log_path = args.log_dir + "/" + str(args.job_id)
+    logger = metaLogger(log_path)
 
     seed_everything(args.seed)
     model = quad().to(device)
@@ -56,12 +58,12 @@ def main():
 
     opt = get_optim(args.optim, args.lr, args.momentum, model)
 
-    stats = train(args, model, opt, device)
+    log = train(logger, args, model, opt, device)
+    fig = plot_stats(log, log_scale=True)
 
-    fig = plot_stats(stats, True)
-
-    fig.savefig("./result/" + str(args.job_id) + "/result.png")
-    torch.save(stats, "./result/" + str(args.job_id) + "/stats.pt")
+    logger.add_figure("main", fig, 0)
+    logger.save_log()
+    logger.close()
 
 if __name__ == "__main__":
     main()

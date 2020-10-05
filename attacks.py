@@ -1,7 +1,7 @@
+import ipdb
 import torch
 import torch.nn as nn
-from torch.autograd import grad
-from utils_sphere import *
+from utils_sphere import normalize, get_norm
 
 class pgd_sphere(object):
     """ projected gradient desscent, with random initialization within the ball """
@@ -11,17 +11,19 @@ class pgd_sphere(object):
                       'num_iter': 50,
                       'loss_fn': nn.BCEWithLogitsLoss()}
         # parse thru the dictionary and modify user-specific params
-        self.parse_param(**kwargs) 
-        
+        self.parse_param(**kwargs)
+
     def generate(self, model, x, y):
-        eps = self.param['epas']
+        eps = self.param['eps']
         num_iter = self.param['num_iter']
         loss_fn = self.param['loss_fn']
-        
-        r = get_norm(x) 
+
+        r = get_norm(x)
         delta = torch.rand_like(x, requires_grad=True)
+        delta.data = 2 * delta.detach() - 1 
+        delta.data = eps * normalize(delta.detach())
         delta.data = r * normalize(x + delta) - x
-        
+
         for t in range(num_iter):
             model.zero_grad()
             loss = loss_fn(model(x + delta), y)
@@ -35,8 +37,6 @@ class pgd_sphere(object):
         return delta.detach()
 
     def parse_param(self, **kwargs):
-        for key,value in kwargs.items():
+        for key, value in kwargs.items():
             if key in self.param:
                 self.param[key] = value
-                
-                
