@@ -7,5 +7,4 @@ assets/.*
 slurm_out/
 exp/*
 results/*
-notebook/*
 
